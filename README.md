@@ -18,15 +18,24 @@ Open <http://localhost:3000>. The app uses sample Port Harcourt doctor listings 
 
 ## Enable accounts and appointments
 
-Set `DATABASE_URL` to a SQLite or PostgreSQL connection string and set `AUTH_SECRET` to a long, random secret. Copy `.env.example` to `.env` for local development, then create the tables and sample data:
+Set `DATABASE_URL` to your Supabase **pooler** connection string (port `6543`, with `pgbouncer=true&connection_limit=1`), `DIRECT_URL` to the direct database connection (port `5432`), and `AUTH_SECRET` to a long, random secret. Copy `.env.example` to `.env` and replace its placeholders. For local development, create/update the tables and sample data:
 
 ```bash
-npm run db:push
+npm run db:migrate:dev
 npm run db:seed
 npm run dev
 ```
 
-For production on Vercel, configure a persistent hosted PostgreSQL database and add `DATABASE_URL` and `AUTH_SECRET` in the project environment settings. The database is optional for building and browsing the public demo, but required to persist accounts and appointments. Do not use an ephemeral SQLite filesystem for Vercel production data.
+The Prisma schema uses PostgreSQL. `DATABASE_URL` is used by the application through Supabase's connection pool; Prisma migrations use `DIRECT_URL` to bypass the pool. For production on Vercel, configure both variables and `AUTH_SECRET` in the project environment settings. On a new database, apply the migrations with `npx prisma migrate deploy`. If the existing Supabase database already has the original DoctorCloser tables but has no Prisma migration history, baseline that existing schema first with `npx prisma migrate resolve --applied 20261011190000_init`, then run `npx prisma migrate deploy` to apply the HMO migration. Confirm the existing tables match the checked-in initial schema before baselining. Do not commit database credentials.
+
+## HMO verification API
+
+Both HMO routes require an authenticated session and a configured database. Provision trusted `HmoProvider` and patient-owned `HmoPolicy` records before use; do not treat a client-supplied policy number as proof of coverage. Responses are marked `private, no-store` because they can contain insurance and health information.
+
+- `POST /api/hmo/verify` with `{ "policyNumber": "...", "providerId": "..." }` verifies a policy belonging to the signed-in user. It reports the local policy-record result; it does not claim a live insurer lookup.
+- `POST /api/hmo/auth-request` with `{ "appointmentId": "...", "diagnosisSummary": "...", "hmoPolicyId": "..." }` queues a pending pre-authorization request for the signed-in user's appointment. `hmoPolicyId` can be omitted when the appointment is already linked to a policy.
+
+HMO provider verification and authorization endpoints are stored for provider configuration, but external insurer protocols vary. The current implementation uses the Supabase policy record and persists requests in a pending queue; wire an insurer-specific adapter before representing either as a live HMO decision. Diagnosis summaries are sensitive health data and should be protected by your applicable access, retention, and audit controls.
 
 ## Deploy to Vercel
 
@@ -39,7 +48,8 @@ npm run dev
 npm run build
 npm run start
 npm run lint
-npm run db:push
+npm run db:migrate
+npm run db:migrate:dev
 npm run db:seed
 ```
 

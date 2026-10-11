@@ -3,23 +3,25 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model User {
-  id            String    @id @default(cuid())
+  id            String        @id @default(cuid())
   name          String?
-  email         String?   @unique
-  phone         String?   @unique
+  email         String?       @unique
+  phone         String?       @unique
   emailVerified DateTime?
   image         String?
   passwordHash  String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
   accounts      Account[]
   sessions      Session[]
   appointments  Appointment[]
+  hmoPolicies   HmoPolicy[]
 }
 
 model Account {
@@ -58,20 +60,20 @@ model VerificationToken {
 }
 
 model Doctor {
-  id          String        @id @default(cuid())
-  name        String
-  specialty   String
-  clinicName  String
-  city        String
-  rating      Float
-  reviewCount Int
-  price       Int
-  initials    String
-  color       String
-  bio         String
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-  slots       DoctorSlot[]
+  id           String        @id @default(cuid())
+  name         String
+  specialty    String
+  clinicName   String
+  city         String
+  rating       Float
+  reviewCount  Int
+  price        Int
+  initials     String
+  color        String
+  bio          String
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  slots        DoctorSlot[]
   appointments Appointment[]
 }
 
@@ -90,17 +92,78 @@ model DoctorSlot {
 }
 
 model Appointment {
-  id         String           @id @default(cuid())
-  userId     String
-  doctorId   String
-  slotId     String?          @unique
-  status     AppointmentStatus @default(PENDING)
-  createdAt  DateTime         @default(now())
-  updatedAt  DateTime         @updatedAt
-  notes      String?
-  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  doctor     Doctor           @relation(fields: [doctorId], references: [id], onDelete: Cascade)
-  slot       DoctorSlot?      @relation(fields: [slotId], references: [id], onDelete: SetNull)
+  id                       String                    @id @default(cuid())
+  userId                   String
+  doctorId                 String
+  slotId                   String?                   @unique
+  hmoPolicyId              String?
+  status                   AppointmentStatus         @default(PENDING)
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
+  notes                    String?
+  user                     User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  doctor                   Doctor                    @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  slot                     DoctorSlot?               @relation(fields: [slotId], references: [id], onDelete: SetNull)
+  hmoPolicy                HmoPolicy?                @relation(fields: [hmoPolicyId], references: [id], onDelete: SetNull)
+  hmoAuthorizationRequests HmoAuthorizationRequest[]
+
+  @@index([hmoPolicyId])
+  @@index([userId, createdAt])
+}
+
+model HmoProvider {
+  id                    String      @id @default(cuid())
+  name                  String
+  code                  String      @unique
+  supportEmail          String?
+  supportPhone          String?
+  supportUrl            String?
+  verificationEndpoint  String?
+  authorizationEndpoint String?
+  isActive              Boolean     @default(true)
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+  policies              HmoPolicy[]
+
+  @@index([isActive])
+}
+
+model HmoPolicy {
+  id           String                    @id @default(cuid())
+  userId       String
+  providerId   String
+  policyNumber String
+  planTier     String
+  expiresAt    DateTime
+  status       HmoPolicyStatus           @default(ACTIVE)
+  createdAt    DateTime                  @default(now())
+  updatedAt    DateTime                  @updatedAt
+  user         User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider     HmoProvider               @relation(fields: [providerId], references: [id], onDelete: Restrict)
+  appointments Appointment[]
+  authRequests HmoAuthorizationRequest[]
+
+  @@unique([providerId, policyNumber])
+  @@index([userId, status])
+  @@index([expiresAt])
+}
+
+model HmoAuthorizationRequest {
+  id                String                 @id @default(cuid())
+  requestReference  String                 @unique @default(cuid())
+  appointmentId     String
+  hmoPolicyId       String
+  diagnosisSummary  String
+  status            HmoAuthorizationStatus @default(PENDING)
+  authorizationCode String?                @unique
+  responseDetails   String?
+  submittedAt       DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+  appointment       Appointment            @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  hmoPolicy         HmoPolicy              @relation(fields: [hmoPolicyId], references: [id], onDelete: Restrict)
+
+  @@index([appointmentId, submittedAt])
+  @@index([hmoPolicyId, status])
 }
 
 enum SlotStatus {
@@ -114,4 +177,16 @@ enum AppointmentStatus {
   CONFIRMED
   COMPLETED
   CANCELLED
+}
+
+enum HmoPolicyStatus {
+  ACTIVE
+  EXPIRED
+  SUSPENDED
+}
+
+enum HmoAuthorizationStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
