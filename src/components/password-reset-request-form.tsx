@@ -39,7 +39,7 @@ export function PasswordResetRequestForm() {
     <main className="auth-shell">
       <section className="auth-card">
         <h1>Reset your password</h1>
-        <p>Enter the email address on your account and we’ll send a secure reset link.</p>
+        <p>Enter your account email and Supabase will send a secure password recovery link.</p>
 
         <form onSubmit={handleSubmit}>
           <div className="form-group">

@@ -1,11 +1,11 @@
 "use client";
 
-import { signOut } from "next-auth/react";
+import { signOutAction } from "@/src/lib/auth-actions";
 
 export function SignOutButton() {
   return (
-    <button className="btn btn-secondary btn-small" onClick={() => signOut({ callbackUrl: "/" })}>
-      Sign out
-    </button>
+    <form action={signOutAction}>
+      <button className="btn btn-secondary btn-small" type="submit">Sign out</button>
+    </form>
   );
 }

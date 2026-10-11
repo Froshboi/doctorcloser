@@ -18,7 +18,7 @@ Open <http://localhost:3000>. The app uses sample Port Harcourt doctor listings 
 
 ## Enable accounts and appointments
 
-Set `DATABASE_URL` to your Supabase **pooler** connection string (port `6543`, with `pgbouncer=true&connection_limit=1`), `DIRECT_URL` to the direct database connection (port `5432`), and `AUTH_SECRET` to a long, random secret. Copy `.env.example` to `.env` and replace its placeholders. For local development, create/update the tables and sample data:
+Set `DATABASE_URL` to your Supabase **pooler** connection string (port `6543`, with `pgbouncer=true&connection_limit=1`), `DIRECT_URL` to the direct database connection (port `5432`), `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` (or the publishable key), and `NEXT_PUBLIC_APP_URL`. Copy `.env.example` to `.env` and replace its placeholders. For local development, create/update the tables and sample data:
 
 ```bash
 npm run db:migrate:dev
@@ -28,11 +28,13 @@ npm run dev
 
 If account creation says `DATABASE_URL is missing at runtime` on Vercel, confirm the exact variable name `DATABASE_URL` is enabled for the deployment's environment (Production, Preview, or both), save it, and redeploy. Add the raw value without surrounding quotes. `DIRECT_URL` is for direct Prisma migrations and does not replace the runtime `DATABASE_URL`. If the message changes to a database connection error, verify the Supabase pooler host/port, password URL encoding, and that migrations have been applied.
 
-### Password reset email
+### Supabase Auth and password recovery
 
-Password reset is available for accounts with an email address. Configure `RESEND_API_KEY`, `EMAIL_FROM` (a sender on a domain verified in Resend), and `NEXT_PUBLIC_APP_URL` in Vercel for the same environments as the deployed app. The reset link is random, stored only as a SHA-256 digest, expires after 30 minutes, is single-use, and is rate-limited per account. Unknown email addresses receive the same success response. Phone-only accounts need an email added to the account or support-assisted recovery. Redeploy after changing Vercel environment variables.
+New accounts use Supabase Auth email/password with Supabase email confirmation. Password recovery calls Supabase Auth, whose configured SMTP provider delivers the recovery message. The callback exchanges Supabase's one-time code for a server-side session; the password form updates the password in Supabase Auth. Set `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and `NEXT_PUBLIC_APP_URL` in Vercel and redeploy after changes.
 
-The Prisma schema uses PostgreSQL. `DATABASE_URL` is used by the application through Supabase's connection pool; Prisma migrations use `DIRECT_URL` to bypass the pool. For production on Vercel, configure both variables and `AUTH_SECRET` in the project environment settings. Use the Supabase migration workflow below for Supabase projects. The separate Prisma migrations (`npm run db:migrate` / `npm run db:migrate:dev`) are an alternative workflow; do not apply both migration systems to the same database. Do not commit database credentials.
+The existing DoctorCloser app database remains responsible for appointments and HMO records. `User.authUserId` links each application patient to their Supabase Auth identity. On the first confirmed sign-in, an existing app user with the same email is linked to that identity. Existing passwords stored by the old custom login are not migrated to Supabase; users must create/confirm their Supabase Auth account with the same email before the existing patient record can be linked. Email confirmation must be enabled to safely link legacy accounts. The auth migration removes the old `passwordHash` column and obsolete custom reset-token table.
+
+The Prisma schema uses PostgreSQL. `DATABASE_URL` is used by the application through Supabase's connection pool; Prisma migrations use `DIRECT_URL` to bypass the pool. Authentication and recovery use Supabase Auth; there is no NextAuth or Resend integration. Configure the database and Supabase public URL/key in Vercel for the same deployment environment. Enable email/password auth and email confirmations in Supabase. Set the Supabase Auth **Site URL** to the deployed app URL and allow `<app-url>/auth/callback` in its redirect URL list. The Supabase project's **Authentication → SMTP Settings** and email templates control confirmation and password-recovery email delivery. The Supabase default mailer may be rate-limited; configure a custom SMTP provider in Supabase when needed. Use the Supabase migration workflow below for Supabase projects. The separate Prisma migrations (`npm run db:migrate` / `npm run db:migrate:dev`) are an alternative workflow; do not apply both migration systems to the same database. Do not commit database credentials.
 
 ## Supabase GitHub integration
 
@@ -53,7 +55,7 @@ HMO provider verification and authorization endpoints are stored for provider co
 
 ## Deploy to Vercel
 
-Import the repository in Vercel and use the Next.js framework preset. The included `vercel.json` selects `.next` as the build output, so a stale `public` output-directory setting does not prevent deployment. No database environment variables are required to build or serve the public demo. Configure a PostgreSQL database and `AUTH_SECRET` to enable account and booking features.
+Import the repository in Vercel and use the Next.js framework preset. The included `vercel.json` selects `.next` as the build output, so a stale `public` output-directory setting does not prevent deployment. No database environment variables are required to build or serve the public demo. Configure `DATABASE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and `NEXT_PUBLIC_APP_URL` to enable authenticated accounts and booking features.
 
 ## Useful commands
 
@@ -67,4 +69,4 @@ npm run db:migrate:dev
 npm run db:seed
 ```
 
-The seed script creates a demo account (`patient@example.com`, `password123`) for local database-backed development.
+The seed script creates demo patient and doctor records. Create a Supabase Auth account separately to sign in locally.

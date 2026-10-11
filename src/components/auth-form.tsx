@@ -12,7 +12,7 @@ export function AuthForm({ mode, action }: { mode: "login" | "signup"; action: (
     <main className="auth-shell">
       <div className="auth-card">
         <h1>{mode === "signup" ? "Create your account" : "Welcome back"}</h1>
-        <p>{mode === "signup" ? "Book healthcare appointments in under a minute." : "Sign in to manage your appointments."}</p>
+        <p>{mode === "signup" ? "Create an account with your email. We’ll send a confirmation link." : "Sign in to manage your appointments."}</p>
 
         <form action={formAction}>
           {mode === "signup" && (
@@ -23,8 +23,8 @@ export function AuthForm({ mode, action }: { mode: "login" | "signup"; action: (
           )}
 
           <div className="form-group">
-            <label htmlFor="identifier">Phone number or email</label>
-            <input id="identifier" name="identifier" type="text" autoComplete="username" required placeholder="0802 000 0000" />
+            <label htmlFor="identifier">Email address</label>
+            <input id="identifier" name="identifier" type="email" autoComplete="email" required maxLength={254} placeholder="you@example.com" />
           </div>
 
           <div className="form-group">
@@ -33,6 +33,7 @@ export function AuthForm({ mode, action }: { mode: "login" | "signup"; action: (
           </div>
 
           {state.error && <p className="form-error" role="alert">{state.error}</p>}
+          {state.message && <p className="appointment-status success" role="status">{state.message}</p>}
           <SubmitButton mode={mode} />
         </form>
 

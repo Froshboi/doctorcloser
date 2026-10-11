@@ -1,10 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import {
-  isPasswordResetConfigured,
-  PASSWORD_RESET_RESPONSE,
-  requestPasswordReset,
-} from "@/src/lib/password-reset";
+import { createSupabasePublicClient, isSupabaseAuthConfigured } from "@/src/lib/auth";
 
 const requestSchema = z.object({
   email: z.string().trim().email().max(254),
@@ -13,20 +9,14 @@ const requestSchema = z.object({
 function json(body: unknown, status = 200) {
   return NextResponse.json(body, {
     status,
-    headers: {
-      "Cache-Control": "private, no-store",
-      "X-Content-Type-Options": "nosniff",
-    },
+    headers: { "Cache-Control": "private, no-store" },
   });
 }
 
 export async function POST(request: Request) {
-  if (!isPasswordResetConfigured()) {
+  if (!isSupabaseAuthConfigured()) {
     return json(
-      {
-        error:
-          "Password reset is not configured. Set DATABASE_URL, RESEND_API_KEY, EMAIL_FROM, and NEXT_PUBLIC_APP_URL in the deployment environment.",
-      },
+      { error: "Set NEXT_PUBLIC_SUPABASE_URL and a Supabase anon or publishable key to enable password recovery." },
       503,
     );
   }
@@ -43,14 +33,34 @@ export async function POST(request: Request) {
     return json({ error: "Enter a valid email address." }, 400);
   }
 
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+  if (!appUrl) {
+    return json({ error: "Set NEXT_PUBLIC_APP_URL to the deployed site URL." }, 503);
+  }
+
   try {
-    await requestPasswordReset(parsed.data.email);
-    return json({ message: PASSWORD_RESET_RESPONSE });
+    const redirectUrl = new URL("/auth/callback", appUrl);
+    redirectUrl.searchParams.set("next", "/reset-password");
+
+    const supabase = await createSupabasePublicClient();
+    const { error } = await supabase.auth.resetPasswordForEmail(
+      parsed.data.email.toLowerCase(),
+      { redirectTo: redirectUrl.toString() },
+    );
+
+    if (error) {
+      console.error("Supabase password recovery request failed.", error.code ?? error.name);
+      return json({ error: "Unable to request a reset email. Check Supabase Auth settings." }, 503);
+    }
+
+    return json({
+      message: "If an account matches that email address, Supabase will send a password reset link.",
+    });
   } catch (error) {
     console.error(
-      "Password reset request failed.",
+      "Password recovery request failed.",
       error instanceof Error ? error.name : "Unknown error",
     );
-    return json({ error: "Password reset email could not be sent. Please try again later." }, 503);
+    return json({ error: "Unable to request a reset email. Please try again later." }, 503);
   }
 }

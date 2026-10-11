@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useState } from "react";
 
-export function PasswordResetConfirmForm({ token }: { token: string }) {
+export function PasswordResetConfirmForm() {
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const [message, setMessage] = useState("");
@@ -15,10 +15,6 @@ export function PasswordResetConfirmForm({ token }: { token: string }) {
     setError("");
     setMessage("");
 
-    if (!token) {
-      setError("This reset link is missing its token. Request a new link.");
-      return;
-    }
     if (password !== confirmation) {
       setError("The passwords do not match.");
       return;
@@ -29,7 +25,7 @@ export function PasswordResetConfirmForm({ token }: { token: string }) {
       const response = await fetch("/api/auth/password-reset/confirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, password }),
+        body: JSON.stringify({ password }),
       });
       const result = (await response.json()) as { message?: string; error?: string };
 
@@ -49,7 +45,7 @@ export function PasswordResetConfirmForm({ token }: { token: string }) {
     <main className="auth-shell">
       <section className="auth-card">
         <h1>Choose a new password</h1>
-        <p>Your reset link is single-use and expires after 30 minutes.</p>
+        <p>Use the secure recovery link from Supabase to choose a new password.</p>
 
         <form onSubmit={handleSubmit}>
           <div className="form-group">
@@ -85,7 +81,7 @@ export function PasswordResetConfirmForm({ token }: { token: string }) {
           {message ? (
             <Link className="btn btn-primary btn-block" href="/login">Continue to sign in</Link>
           ) : (
-            <button className="btn btn-primary btn-block" type="submit" disabled={pending || !token}>
+            <button className="btn btn-primary btn-block" type="submit" disabled={pending}>
               {pending ? "Updating password..." : "Update password"}
             </button>
           )}

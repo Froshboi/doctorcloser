@@ -1,86 +1,126 @@
-import { PrismaAdapter } from "@auth/prisma-adapter";
-import bcrypt from "bcryptjs";
-import NextAuth, { type NextAuthConfig } from "next-auth";
-import Credentials from "next-auth/providers/credentials";
+import { cookies } from "next/headers";
+import { createServerClient } from "@supabase/ssr";
 import { prisma } from "@/src/lib/prisma";
 
-export const authConfig = {
-  adapter: PrismaAdapter(prisma),
-  session: {
-    strategy: "jwt",
-  },
-  pages: {
-    signIn: "/login",
-  },
-  providers: [
-    Credentials({
-      credentials: {
-        identifier: { label: "Phone or email", type: "text" },
-        password: { label: "Password", type: "password" },
+export function isSupabaseAuthConfigured() {
+  return Boolean(
+    (process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL) &&
+    (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+      process.env.SUPABASE_ANON_KEY),
+  );
+}
+
+function getSupabaseAuthConfig() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;
+  const key =
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+    process.env.SUPABASE_ANON_KEY;
+
+  if (!url || !key) {
+    throw new Error(
+      "Supabase Auth is not configured. Set NEXT_PUBLIC_SUPABASE_URL and a Supabase anon or publishable key.",
+    );
+  }
+
+  return { url, key };
+}
+
+export async function createSupabaseServerClient() {
+  const { url, key } = getSupabaseAuthConfig();
+  const cookieStore = await cookies();
+
+  return createServerClient(url, key, {
+    cookies: {
+      getAll() {
+        return cookieStore.getAll();
       },
-      async authorize(credentials) {
-        if (!process.env.DATABASE_URL) return null;
-
-        const identifier = credentials.identifier?.toString().trim();
-        const password = credentials.password?.toString();
-
-        if (!identifier || !password) return null;
-
-        const user = await prisma.user.findFirst({
-          where: {
-            OR: [
-              { email: identifier.toLowerCase() },
-              { phone: identifier },
-            ],
-          },
-        });
-
-        if (!user?.passwordHash) return null;
-        const valid = await bcrypt.compare(password, user.passwordHash);
-        if (!valid) return null;
-
-        return {
-          id: user.id,
-          name: user.name,
-          email: user.email ?? undefined,
-          image: user.image ?? undefined,
-        };
-      },
-    }),
-  ],
-  callbacks: {
-    async jwt({ token, user }) {
-      if (user) {
-        token.id = user.id;
-      }
-
-      if (typeof token.id === "string") {
-        const account = await prisma.user.findUnique({
-          where: { id: token.id },
-          select: { updatedAt: true },
-        });
-
-        const issuedAt = typeof token.userUpdatedAt === "number"
-          ? token.userUpdatedAt
-          : (token.iat ?? 0) * 1000;
-
-        if (!account || (!user && account.updatedAt.getTime() > issuedAt)) {
-          token.id = undefined;
-        } else {
-          token.userUpdatedAt = account.updatedAt.getTime();
+      setAll(cookiesToSet) {
+        try {
+          for (const { name, value, options } of cookiesToSet) {
+            cookieStore.set(name, value, options);
+          }
+        } catch {
+          // Server Components cannot write cookies; middleware refreshes sessions.
         }
-      }
-
-      return token;
+      },
     },
-    async session({ session, token }) {
-      if (session.user) {
-        session.user.id = typeof token.id === "string" ? token.id : "";
-      }
-      return session;
-    },
-  },
-  secret: process.env.AUTH_SECRET,
-} satisfies NextAuthConfig;
+  });
+}
 
-export const { handlers, auth, signIn, signOut } = NextAuth(authConfig);
+export async function createSupabasePublicClient() {
+  const { createClient } = await import("@supabase/supabase-js");
+  const { url, key } = getSupabaseAuthConfig();
+
+  return createClient(url, key, {
+    auth: {
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+      persistSession: false,
+    },
+  });
+}
+
+export async function auth() {
+  if (!process.env.DATABASE_URL || !isSupabaseAuthConfigured()) return null;
+
+  const supabase = await createSupabaseServerClient();
+  const { data: { user }, error } = await supabase.auth.getUser();
+  if (error || !user) return null;
+
+  const email = user.email?.trim().toLowerCase() ?? null;
+  const name =
+    typeof user.user_metadata.full_name === "string"
+      ? user.user_metadata.full_name
+      : typeof user.user_metadata.name === "string"
+        ? user.user_metadata.name
+        : null;
+
+  const linkedUser = await prisma.user.findUnique({
+    where: { authUserId: user.id },
+    select: { id: true, name: true, email: true },
+  });
+
+  if (linkedUser) {
+    if (email && linkedUser.email !== email) {
+      return prisma.user.update({
+        where: { id: linkedUser.id },
+        data: { email, ...(name && !linkedUser.name ? { name } : {}) },
+        select: { id: true, name: true, email: true },
+      }).then((record) => ({ user: record }));
+    }
+    return { user: linkedUser };
+  }
+
+  const legacyUser = email
+    ? await prisma.user.findUnique({
+        where: { email },
+        select: { id: true, name: true, email: true },
+      })
+    : null;
+
+  if (legacyUser && !user.email_confirmed_at) {
+    throw new Error("Confirm your Supabase email address before linking your existing account.");
+  }
+
+  const appUser = legacyUser
+    ? await prisma.user.update({
+        where: { id: legacyUser.id },
+        data: {
+          authUserId: user.id,
+          ...(name && !legacyUser.name ? { name } : {}),
+        },
+        select: { id: true, name: true, email: true },
+      })
+    : await prisma.user.create({
+        data: {
+          authUserId: user.id,
+          email,
+          name,
+        },
+        select: { id: true, name: true, email: true },
+      });
+
+  return { user: appUser };
+}
