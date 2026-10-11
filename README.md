@@ -26,7 +26,15 @@ npm run db:seed
 npm run dev
 ```
 
-The Prisma schema uses PostgreSQL. `DATABASE_URL` is used by the application through Supabase's connection pool; Prisma migrations use `DIRECT_URL` to bypass the pool. For production on Vercel, configure both variables and `AUTH_SECRET` in the project environment settings. On a new database, apply the migrations with `npx prisma migrate deploy`. If the existing Supabase database already has the original DoctorCloser tables but has no Prisma migration history, baseline that existing schema first with `npx prisma migrate resolve --applied 20261011190000_init`, then run `npx prisma migrate deploy` to apply the HMO migration. Confirm the existing tables match the checked-in initial schema before baselining. Do not commit database credentials.
+The Prisma schema uses PostgreSQL. `DATABASE_URL` is used by the application through Supabase's connection pool; Prisma migrations use `DIRECT_URL` to bypass the pool. For production on Vercel, configure both variables and `AUTH_SECRET` in the project environment settings. Use the Supabase migration workflow below for Supabase projects. The separate Prisma migrations (`npm run db:migrate` / `npm run db:migrate:dev`) are an alternative workflow; do not apply both migration systems to the same database. Do not commit database credentials.
+
+## Supabase GitHub integration
+
+The repository includes `supabase/config.toml` and SQL migrations under `supabase/migrations/`. In Supabase, connect this GitHub repository and set **Working directory** to `.` because the `supabase/` directory is at the repository root. Supabase Branching runs these migrations when it creates a preview branch.
+
+> **Destructive reset:** The initial Supabase migration intentionally drops and recreates the app's known public tables (`User`, `Account`, `Session`, `VerificationToken`, `Doctor`, `DoctorSlot`, `Appointment`, and HMO tables) and their app enums. Existing rows in those tables will be permanently deleted. It does not drop unrelated public tables, Supabase Auth/Storage schemas, or project settings. Back up the database and confirm the target before applying it.
+
+To apply the migration to an existing linked project with the Supabase CLI, first back up the database, then link the project and run `supabase db push` after reviewing the destructive SQL. This resets the DoctorCloser application tables and their data; Supabase Auth users, Storage objects, and unrelated public tables are not reset. Do not also apply the Prisma initial baseline to the same database; Supabase migrations and Prisma migrations maintain separate migration histories.
 
 ## HMO verification API
 
