@@ -53,11 +53,29 @@ export const authConfig = {
       if (user) {
         token.id = user.id;
       }
+
+      if (typeof token.id === "string") {
+        const account = await prisma.user.findUnique({
+          where: { id: token.id },
+          select: { updatedAt: true },
+        });
+
+        const issuedAt = typeof token.userUpdatedAt === "number"
+          ? token.userUpdatedAt
+          : (token.iat ?? 0) * 1000;
+
+        if (!account || (!user && account.updatedAt.getTime() > issuedAt)) {
+          token.id = undefined;
+        } else {
+          token.userUpdatedAt = account.updatedAt.getTime();
+        }
+      }
+
       return token;
     },
     async session({ session, token }) {
       if (session.user) {
-        session.user.id = token.id as string;
+        session.user.id = typeof token.id === "string" ? token.id : "";
       }
       return session;
     },

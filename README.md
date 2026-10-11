@@ -26,6 +26,12 @@ npm run db:seed
 npm run dev
 ```
 
+If account creation says `DATABASE_URL is missing at runtime` on Vercel, confirm the exact variable name `DATABASE_URL` is enabled for the deployment's environment (Production, Preview, or both), save it, and redeploy. Add the raw value without surrounding quotes. `DIRECT_URL` is for direct Prisma migrations and does not replace the runtime `DATABASE_URL`. If the message changes to a database connection error, verify the Supabase pooler host/port, password URL encoding, and that migrations have been applied.
+
+### Password reset email
+
+Password reset is available for accounts with an email address. Configure `RESEND_API_KEY`, `EMAIL_FROM` (a sender on a domain verified in Resend), and `NEXT_PUBLIC_APP_URL` in Vercel for the same environments as the deployed app. The reset link is random, stored only as a SHA-256 digest, expires after 30 minutes, is single-use, and is rate-limited per account. Unknown email addresses receive the same success response. Phone-only accounts need an email added to the account or support-assisted recovery. Redeploy after changing Vercel environment variables.
+
 The Prisma schema uses PostgreSQL. `DATABASE_URL` is used by the application through Supabase's connection pool; Prisma migrations use `DIRECT_URL` to bypass the pool. For production on Vercel, configure both variables and `AUTH_SECRET` in the project environment settings. Use the Supabase migration workflow below for Supabase projects. The separate Prisma migrations (`npm run db:migrate` / `npm run db:migrate:dev`) are an alternative workflow; do not apply both migration systems to the same database. Do not commit database credentials.
 
 ## Supabase GitHub integration

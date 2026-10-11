@@ -8,6 +8,9 @@ import { prisma } from "@/src/lib/prisma";
 
 export type AuthActionState = { error: string };
 
+const databaseSetupMessage =
+  "DATABASE_URL is missing at runtime. In Vercel, add the exact key DATABASE_URL to Production (and Preview if needed), then redeploy.";
+
 const signUpSchema = z.object({
   name: z.string().trim().min(2, "Enter your full name."),
   identifier: z.string().trim().min(3, "Enter a valid phone number or email."),
@@ -21,7 +24,7 @@ const signInSchema = z.object({
 
 export async function signUpAction(state: AuthActionState, formData: FormData): Promise<AuthActionState> {
   if (!process.env.DATABASE_URL) {
-    return { error: "Account creation is unavailable until a database is configured." };
+    return { error: databaseSetupMessage };
   }
 
   const values = Object.fromEntries(formData.entries());
@@ -33,28 +36,46 @@ export async function signUpAction(state: AuthActionState, formData: FormData): 
 
   const { name, identifier, password } = parsed.data;
   const isEmail = identifier.includes("@");
-  const existingUser = await prisma.user.findFirst({
-    where: {
-      OR: [
-        isEmail ? { email: identifier.toLowerCase() } : { phone: identifier },
-        { email: isEmail ? identifier.toLowerCase() : undefined },
-      ],
-    },
-  });
+  let existingUser;
+  try {
+    existingUser = await prisma.user.findFirst({
+      where: {
+        OR: [
+          isEmail ? { email: identifier.toLowerCase() } : { phone: identifier },
+          { email: isEmail ? identifier.toLowerCase() : undefined },
+        ],
+      },
+    });
+  } catch (error) {
+    console.error(
+      "Account lookup failed.",
+      error instanceof Error ? error.name : "Unknown error",
+    );
+    return { error: "Could not connect to the database. Check the Vercel DATABASE_URL value." };
+  }
 
   if (existingUser) {
     return { error: "An account already exists with that phone number or email." };
   }
 
   const passwordHash = await bcrypt.hash(password, 12);
-  const newUser = await prisma.user.create({
-    data: {
-      name,
-      email: isEmail ? identifier.toLowerCase() : null,
-      phone: isEmail ? null : identifier,
-      passwordHash,
-    },
-  });
+  let newUser;
+  try {
+    newUser = await prisma.user.create({
+      data: {
+        name,
+        email: isEmail ? identifier.toLowerCase() : null,
+        phone: isEmail ? null : identifier,
+        passwordHash,
+      },
+    });
+  } catch (error) {
+    console.error(
+      "Account creation failed.",
+      error instanceof Error ? error.name : "Unknown error",
+    );
+    return { error: "Could not create the account. Check the database connection and migrations." };
+  }
 
   await signIn("credentials", {
     identifier,
@@ -68,7 +89,7 @@ export async function signUpAction(state: AuthActionState, formData: FormData): 
 
 export async function signInAction(state: AuthActionState, formData: FormData): Promise<AuthActionState> {
   if (!process.env.DATABASE_URL) {
-    return { error: "Sign-in is unavailable until a database is configured." };
+    return { error: databaseSetupMessage };
   }
 
   const values = Object.fromEntries(formData.entries());
@@ -88,6 +109,10 @@ export async function signInAction(state: AuthActionState, formData: FormData): 
     if ((error as Error).message.includes("CredentialsSignin")) {
       return { error: "The phone number, email, or password is incorrect." };
     }
+    console.error(
+      "Sign-in failed.",
+      error instanceof Error ? error.name : "Unknown error",
+    );
     return { error: "Unable to sign in. Please try again." };
   }
 

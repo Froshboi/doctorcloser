@@ -40,6 +40,9 @@ export function AuthForm({ mode, action }: { mode: "login" | "signup"; action: (
           {mode === "signup" ? "Already have an account? " : "New to DoctorCloser? "}
           <Link href={mode === "signup" ? "/login" : "/signup"}>{mode === "signup" ? "Sign in" : "Create an account"}</Link>
         </p>
+        {mode === "login" && (
+          <p className="auth-switch"><Link href="/forgot-password">Forgot your password?</Link></p>
+        )}
       </div>
     </main>
   );
