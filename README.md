@@ -30,7 +30,7 @@ For production on Vercel, configure a persistent hosted PostgreSQL database and 
 
 ## Deploy to Vercel
 
-Import the repository in Vercel and use the default Next.js build settings. No database environment variables are required to build or serve the public demo. Configure a PostgreSQL database and `AUTH_SECRET` to enable account and booking features.
+Import the repository in Vercel and use the Next.js framework preset. The included `vercel.json` selects `.next` as the build output, so a stale `public` output-directory setting does not prevent deployment. No database environment variables are required to build or serve the public demo. Configure a PostgreSQL database and `AUTH_SECRET` to enable account and booking features.
 
 ## Useful commands
 
